@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>黃金帽爭奪戰：無限模式 - QQCATS</title>
+  <style>
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #f8f8f8;
+      font-family: sans-serif;
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .game-container {
+      width: 100vw;
+      max-width: 420px;
+      aspect-ratio: 3 / 4;
+      position: relative;
+      overflow: hidden;
+      background: white;
+      border: 6px solid gold;
+      border-radius: 16px;
+      box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+    }
+    .game-inner {
+      width: 360px;
+      height: 480px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: top left;
+      background: #fff8dc;
+    }
+    #player {
+      width: 50px;
+      height: 50px;
+      background-size: contain;
+      background-repeat: no-repeat;
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+    .item {
+      width: 50px;
+      height: 50px;
+      position: absolute;
+      background-size: contain;
+      background-repeat: no-repeat;
+      top: 0;
+      z-index: 5;
+    }
+    #score, #timer {
+      position: absolute;
+      top: 10px;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 20;
+    }
+    #score { left: 10px; }
+    #timer { right: 10px; }
+    #game-over {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.9);
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 1rem;
+    }
+    input, button {
+      margin-top: 0.5rem;
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 6px;
+    }
+    #name-input {
+      text-align: center;
+      width: 80%;
+    }
+    #leaderboard {
+      max-height: 120px;
+      overflow-y: auto;
+      margin-top: 10px;
+      font-size: 14px;
+      width: 100%;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+<div class="game-container" id="game-wrapper">
+  <div class="game-inner" id="game">
+    <div id="score">分數：0</div>
+    <div id="timer">無限模式</div>
+    <div id="player"></div>
+    <div id="game-over">
+      <h3>🎮 遊戲結束</h3>
+      <p>你得 <span id="final-score">0</span> 分！</p>
+      <p id="game-message">你仲可以再拎高啲分～加油！</p>
+      <input id="name-input" maxlength="10" placeholder="留低你個IG名啦" />
+      <button id="submit-btn" disabled>提交</button>
+      <div id="leaderboard"></div>
+      <button onclick="location.reload()">再玩一次</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyA5lDra5xfeyUIObpTQ8395wAoY07I7RBE",
+    authDomain: "qqcats-hat-infinite.firebaseapp.com",
+    databaseURL: "https://qqcats-hat-infinite-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "qqcats-hat-infinite",
+    storageBucket: "qqcats-hat-infinite.firebasestorage.app",
+    messagingSenderId: "449006864877",
+    appId: "1:449006864877:web:9ae3bde175ccf5d9f0ffe4"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const game = document.getElementById('game');
+  const player = document.getElementById('player');
+  const scoreEl = document.getElementById('score');
+  const timerEl = document.getElementById('timer');
+  const nameInput = document.getElementById('name-input');
+  const submitBtn = document.getElementById('submit-btn');
+  const leaderboard = document.getElementById('leaderboard');
+  const finalScore = document.getElementById('final-score');
+  const gameOverScreen = document.getElementById('game-over');
+
+  let playerX = 0;
+  let score = 0;
+  let gameEnded = false;
+
+  const hatImages = {
+    normal: 'https://cdn.shopify.com/s/files/1/0661/7468/1319/files/IMG_6758.png?v=1757939311',
+    bad: 'https://cdn.shopify.com/s/files/1/0661/7468/1319/files/IMG_6757.png?v=1757939311',
+    gold: 'https://cdn.shopify.com/s/files/1/0661/7468/1319/files/IMG_6756.png?v=1757939311'
+  };
+
+  player.style.backgroundImage = `url('https://cdn.shopify.com/s/files/1/0661/7468/1319/files/IMG_6738.png?v=1757860381')`;
+
+  function getRandomHatType() {
+    const rand = Math.random();
+    const progress = Math.min(score / 100, 1);
+    const goldChance = 0.2 - progress * 0.15;
+    const badChance = 0.2 + progress * 0.4;
+    const normalChance = 1 - goldChance - badChance;
+    if (rand < normalChance) return 'normal';
+    if (rand < normalChance + goldChance) return 'gold';
+    return 'bad';
+  }
+
+  function spawnItem(type = null) {
+    if (gameEnded) return;
+    const item = document.createElement('div');
+    item.className = 'item';
+    type = type || getRandomHatType();
+    item.dataset.type = type;
+    item.style.backgroundImage = `url(${hatImages[type]})`;
+    item.style.left = Math.random() * 310 + 'px';
+    item.style.top = '0px';
+    game.appendChild(item);
+
+    let y = 0;
+    let speed = 3;
+    if (type === 'gold') speed = 5;
+    if (type === 'bad') speed = 4 + Math.min(score / 50, 4);
+
+    const fall = setInterval(() => {
+      if (gameEnded) {
+        clearInterval(fall);
+        item.remove();
+        return;
+      }
+      y += speed;
+      item.style.top = `${y}px`;
+
+      const itemRect = item.getBoundingClientRect();
+      const playerRect = player.getBoundingClientRect();
+
+      if (
+        itemRect.bottom >= playerRect.top &&
+        itemRect.left < playerRect.right &&
+        itemRect.right > playerRect.left
+      ) {
+        clearInterval(fall);
+        item.remove();
+        if (type === 'normal') score += 1;
+        if (type === 'gold') score += 3;
+        if (type === 'bad') return endGame();
+        scoreEl.textContent = `分數：${score}`;
+      }
+
+      if (y > 500) {
+        clearInterval(fall);
+        item.remove();
+      }
+    }, 16);
+  }
+
+  function dynamicSpawn() {
+    if (gameEnded) return;
+    spawnItem();
+    const progress = Math.min(score / 100, 1);
+    const delay = 800 - progress * 500;
+    setTimeout(dynamicSpawn, delay);
+  }
+
+  function endGame() {
+    gameEnded = true;
+    finalScore.textContent = score;
+    gameOverScreen.style.display = 'flex';
+  }
+
+  submitBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    db.ref('leaderboard-infinite').push({ name, score });
+    submitBtn.disabled = true;
+    nameInput.disabled = true;
+    loadLeaderboard();
+  });
+
+  nameInput.addEventListener('input', () => {
+    submitBtn.disabled = nameInput.value.trim() === '';
+  });
+
+  function loadLeaderboard() {
+    leaderboard.innerHTML = '<p>🏆 排行榜：</p>';
+    db.ref('leaderboard-infinite').once('value', snapshot => {
+      const data = [];
+      snapshot.forEach(child => {
+        const val = child.val();
+        data.push(val);
+      });
+      data.sort((a, b) => b.score - a.score);
+      data.forEach((entry, i) => {
+        leaderboard.innerHTML += `<div>${i + 1}. ${entry.name}：${entry.score}分</div>`;
+      });
+    });
+  }
+
+  function movePlayer(dir) {
+    const maxOffset = 140;
+    if (dir === 'left') playerX = Math.max(playerX - 10, -maxOffset);
+    else playerX = Math.min(playerX + 10, maxOffset);
+    player.style.left = '50%';
+    player.style.transform = `translateX(-50%) translateX(${playerX}px)`;
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      movePlayer(e.key === 'ArrowLeft' ? 'left' : 'right');
+    }
+  });
+
+  game.addEventListener('touchstart', e => {
+    const x = e.touches[0].clientX - game.getBoundingClientRect().left;
+    const dir = x < 180 ? 'left' : 'right';
+    movePlayer(dir);
+  });
+
+  // 開始遊戲
+  window.addEventListener('load', () => {
+    scoreEl.textContent = '分數：0';
+    timerEl.textContent = '∞';
+    dynamicSpawn();
+  });
+</script>
+</body>
+</html>
